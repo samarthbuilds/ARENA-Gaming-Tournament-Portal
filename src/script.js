@@ -65,8 +65,29 @@ export function seedData() {
     },
     {
       id: "u2",
-      name: "Demo Player",
-      email: "player@arena.gg",
+      name: "Aarav Sharma",
+      email: "aarav@arena.gg",
+      password: "player123",
+      role: "user"
+    },
+    {
+      id: "u3",
+      name: "Rohan Verma",
+      email: "rohan@arena.gg",
+      password: "player123",
+      role: "user"
+    },
+    {
+      id: "u4",
+      name: "Karthik Nair",
+      email: "karthik@arena.gg",
+      password: "player123",
+      role: "user"
+    },
+    {
+      id: "u5",
+      name: "Ananya Rao",
+      email: "ananya@arena.gg",
       password: "player123",
       role: "user"
     }
@@ -121,7 +142,9 @@ export function seedData() {
 
   save("registrations", [
     { id: "r1", tournamentId: "t1", userId: "u2", teamName: "Night Owls", status: "Approved" },
-    { id: "r2", tournamentId: "t3", userId: "u2", teamName: "Night Owls", status: "Pending" }
+    { id: "r2", tournamentId: "t3", userId: "u3", teamName: "Iron Wolves", status: "Pending" },
+    { id: "r3", tournamentId: "t1", userId: "u4", teamName: "Team Nova", status: "Approved" },
+    { id: "r4", tournamentId: "t5", userId: "u5", teamName: "Storm Riders", status: "Pending" }
   ]);
 
   save("teams", [
@@ -129,7 +152,13 @@ export function seedData() {
       id: "team1",
       name: "Night Owls",
       ownerId: "u2",
-      members: ["Demo Player", "Rohan", "Aarav", "Karthik", "Ishaan"]
+      members: ["Aarav Sharma", "Rohan Verma", "Karthik Nair", "Ishaan Patel", "Vikram Joshi"]
+    },
+    {
+      id: "team2",
+      name: "Iron Wolves",
+      ownerId: "u3",
+      members: ["Rohan Verma", "Kabir Mehta", "Devansh Gupta", "Siddharth Menon"]
     }
   ]);
 }
@@ -260,4 +289,92 @@ export function registerForTournament(tournament, user, teamName) {
   }
 
   return null;
+}
+
+/* ---------- Admin Actions ---------- */
+
+export function createTournament({ name, game, prize, date, slots }) {
+  const tournaments = getTournaments();
+  const newTournament = {
+    id: newId("t"),
+    name: name.trim(),
+    game,
+    prize: prize.trim(),
+    date,
+    slots: Number(slots),
+    joined: 0,
+    status: "Open"
+  };
+  save("tournaments", [newTournament, ...tournaments]);
+  return newTournament;
+}
+
+export function deleteTournament(id) {
+  save("tournaments", getTournaments().filter(t => t.id !== id));
+  save("registrations", getRegistrations().filter(r => r.tournamentId !== id));
+  save("matches", getMatches().filter(m => m.tournamentId !== id));
+}
+
+export function updateRegistrationStatus(regId, status) {
+  const registrations = getRegistrations();
+  const target = registrations.find(r => r.id === regId);
+  if (!target) return;
+
+  const prevStatus = target.status;
+  target.status = status;
+  save("registrations", registrations);
+
+  // Free up a slot if rejected after being counted
+  if (prevStatus !== "Rejected" && status === "Rejected") {
+    const tournaments = getTournaments();
+    const t = tournaments.find(x => x.id === target.tournamentId);
+    if (t && t.joined > 0) {
+      t.joined -= 1;
+      save("tournaments", tournaments);
+    }
+  }
+}
+
+export function createMatch({ tournamentId, teamA, teamB, date, time }) {
+  const tournaments = getTournaments();
+  const t = tournaments.find(x => x.id === tournamentId);
+  const newMatch = {
+    id: newId("m"),
+    tournamentId,
+    game: t ? t.game : GAMES[0],
+    teamA: teamA.trim(),
+    teamB: teamB.trim(),
+    date,
+    time,
+    scoreA: null,
+    scoreB: null,
+    status: "Upcoming"
+  };
+  save("matches", [newMatch, ...getMatches()]);
+  return newMatch;
+}
+
+export function updateMatchScore(matchId, scoreA, scoreB) {
+  const matches = getMatches();
+  const m = matches.find(x => x.id === matchId);
+  if (!m) return;
+
+  m.scoreA = Number(scoreA);
+  m.scoreB = Number(scoreB);
+  m.status = "Completed";
+  save("matches", matches);
+
+  // Award +100 pts and +1 win to the winning team on the leaderboard
+  const winner = m.scoreA > m.scoreB ? m.teamA : m.scoreB > m.scoreA ? m.teamB : null;
+  if (winner) {
+    const lb = load("leaderboard");
+    const row = lb.find(r => r.team.toLowerCase() === winner.toLowerCase());
+    if (row) {
+      row.wins += 1;
+      row.points += 100;
+    } else {
+      lb.push({ id: newId("l"), team: winner, game: m.game, wins: 1, points: 100 });
+    }
+    save("leaderboard", lb);
+  }
 }
